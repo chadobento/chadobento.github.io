@@ -283,7 +283,7 @@ footer{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:
 /* ================= CONFIGURAÇÃO — edite aqui ================= */
 const CONFIG = {
   // Cole a URL do Apps Script publicado (termina em /exec). Vazio = modo demonstração.
-  API_URL: 'https://script.google.com/macros/s/AKfycbyj_pJDJg6s1iYvCrX4p70PuP5ZURwIdbIQdQOmb6j4mPXxfj0ajWYFMjJRTegx-1kB/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbxy-TD-A-tRBO414HsF3clb6ruoVvPsLBfw4LD-fKRNvbXx-lxm9Kz50BSTwz27ok3d/exec',
   BEBE: 'Bento',
   DATA_ISO: '2027-01-24T12:00:00-03:00',   // início da festa
   DURACAO_HORAS: 6,
@@ -321,7 +321,7 @@ const demoApi = {
 };
 
 const realApi = {
-  async get(c, t) { const r = await fetch(`${CONFIG.API_URL}?c=${encodeURIComponent(c)}&t=${encodeURIComponent(t)}`); return r.json(); },
+  async get(c, t) { const r = await fetch(`${CONFIG.API_URL}?codigo=${encodeURIComponent(c)}&t=${encodeURIComponent(t)}`); return r.json(); },
   async confirm(d) {
     const r = await fetch(CONFIG.API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(d) });
     return r.json();
