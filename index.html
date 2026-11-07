@@ -124,9 +124,6 @@ button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
 .reveal{animation:pop .5s cubic-bezier(.2,1.4,.4,1) both}
 @keyframes pop{from{transform:scale(.85);opacity:.3}to{transform:scale(1);opacity:1}}
 .ok-badge{align-self:center;font:700 .8rem var(--f-body);letter-spacing:.08em;text-transform:uppercase;background:var(--grass);color:var(--ink);border-radius:999px;padding:5px 12px}
-.results{display:flex;flex-direction:column;gap:8px}
-.results button{text-align:left;font:600 1rem var(--f-body);color:var(--ink);background:var(--paper);border:2px solid var(--line);border-radius:14px;padding:12px 14px;cursor:pointer}
-.results button:hover{border-color:var(--honey)}
 .spinner{width:42px;height:42px;margin:18px auto;border-radius:50%;border:5px solid #FFF1CF;border-top-color:var(--honey);animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 footer{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:8px;text-align:center}
@@ -254,14 +251,14 @@ footer{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:
       <button type="button" class="linkish" data-edit>Mudar minha resposta</button>
     </div>
 
-    <div class="state" data-state="search" hidden>
-      <div>
-        <h2>Confirme sua presença</h2>
-        <p class="muted" style="margin:0">Digite seu nome como está no convite.</p>
-      </div>
-      <input type="text" id="s-name" autocomplete="name" placeholder="Ex.: Paulo Rubens" aria-label="Seu nome">
-      <div class="results" id="s-results"></div>
-      <p class="muted" id="s-hint" style="margin:0" hidden></p>
+    <div class="state" data-state="nolink" hidden>
+      <h2>Este convite é pessoal</h2>
+      <p class="muted" style="margin:0">Para confirmar presença, abra o link que você recebeu dos papais pelo WhatsApp. Cada convidado tem o seu.</p>
+    </div>
+
+    <div class="state" data-state="locked" hidden>
+      <h2 id="k-title">Convite já respondido</h2>
+      <p class="muted" style="margin:0">Este convite já foi respondido em outro aparelho. Se foi você e trocou de celular ou de navegador, fale com os papais que eles liberam.</p>
     </div>
 
     <div class="state" data-state="error" hidden>
@@ -281,7 +278,7 @@ footer{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:
 /* ================= CONFIGURAÇÃO — edite aqui ================= */
 const CONFIG = {
   // Cole a URL do Apps Script publicado (termina em /exec). Vazio = modo demonstração.
-  API_URL: 'https://script.google.com/macros/s/AKfycbyj_pJDJg6s1iYvCrX4p70PuP5ZURwIdbIQdQOmb6j4mPXxfj0ajWYFMjJRTegx-1kB/exec',
+  API_URL: '',
   BEBE: 'Bento',
   DATA_ISO: '2027-01-24T12:00:00-03:00',   // início da festa
   DURACAO_HORAS: 6,
@@ -301,35 +298,40 @@ const firstName = n => String(n || '').trim().split(/\s+/)[0] || '';
 /* ---------- Dados de exemplo (somente no modo demonstração) ---------- */
 const demoDB = [
   { codigo: 'paulo7x', nome: 'Paulo Souza',    presente: 'Fralda P ou M',                 confirmado: '',    acompanhantes: 0, mensagem: '' },
-  { codigo: 'ana3k',   nome: 'Ana Lima',       presente: 'Lenços umedecidos + pomada',    confirmado: '',    acompanhantes: 0, mensagem: '' },
+  { codigo: 'ana3k',   nome: 'Ana Lima',       presente: 'Lenços umedecidos + pomada',    confirmado: 'Sim', acompanhantes: 2, mensagem: '', aparelho: 'outro-aparelho' },
   { codigo: 'mari9q',  nome: 'Mariana Costa',  presente: 'Fralda G',                      confirmado: 'Sim', acompanhantes: 1, mensagem: 'Mal posso esperar!' },
   { codigo: 'paulo2b', nome: 'Paulo Henrique', presente: 'Kit de bodies RN',              confirmado: '',    acompanhantes: 0, mensagem: '' }
 ];
 const wait = ms => new Promise(r => setTimeout(r, ms));
-const pub = g => ({ ok: true, codigo: g.codigo, nome: g.nome, confirmado: g.confirmado, acompanhantes: g.acompanhantes, mensagem: g.mensagem, presente: g.confirmado === 'Sim' ? g.presente : '' });
-
-const demoApi = {
-  async get(c) { await wait(450); const g = demoDB.find(x => x.codigo === norm(c)); return g ? pub(g) : { ok: false }; },
-  async search(q) { await wait(300); return { ok: true, resultados: matchNames(demoDB, q) }; },
-  async confirm(d) { await wait(600); const g = demoDB.find(x => x.codigo === d.codigo); if (!g) return { ok: false };
-    g.confirmado = d.confirmado; g.acompanhantes = d.confirmado === 'Sim' ? d.acompanhantes : 0; g.mensagem = d.mensagem; return pub(g); }
+// Mesma regra do Code.gs: depois de respondido, o convite fica preso ao aparelho que respondeu
+const pub = (g, t) => {
+  if (g.confirmado && g.aparelho && g.aparelho !== t) return { ok: true, bloqueado: true, nome: g.nome };
+  return { ok: true, codigo: g.codigo, nome: g.nome, confirmado: g.confirmado, acompanhantes: g.acompanhantes, mensagem: g.mensagem, presente: g.confirmado === 'Sim' ? g.presente : '' };
 };
-function matchNames(list, q) {
-  const toks = norm(q).split(/\s+/).filter(Boolean);
-  if (norm(q).length < 3) return [];
-  return list.filter(g => { const nt = norm(g.nome).split(/\s+/); return toks.every(t => nt.some(w => w.startsWith(t))); })
-             .slice(0, 5).map(g => ({ codigo: g.codigo, nome: g.nome }));
-}
+const demoApi = {
+  async get(c, t) { await wait(450); const g = demoDB.find(x => x.codigo === norm(c)); return g ? pub(g, t) : { ok: false }; },
+  async confirm(d) { await wait(600); const g = demoDB.find(x => x.codigo === d.codigo); if (!g) return { ok: false };
+    if (g.confirmado && g.aparelho && g.aparelho !== d.aparelho) return { ok: true, bloqueado: true, nome: g.nome };
+    g.confirmado = d.confirmado; g.acompanhantes = d.confirmado === 'Sim' ? d.acompanhantes : 0; g.mensagem = d.mensagem; g.aparelho = d.aparelho; return pub(g, d.aparelho); }
+};
 
 const realApi = {
-  async get(c) { const r = await fetch(`${CONFIG.API_URL}?c=${encodeURIComponent(c)}`); return r.json(); },
-  async search(q) { const r = await fetch(`${CONFIG.API_URL}?nome=${encodeURIComponent(q)}`); return r.json(); },
+  async get(c, t) { const r = await fetch(`${CONFIG.API_URL}?c=${encodeURIComponent(c)}&t=${encodeURIComponent(t)}`); return r.json(); },
   async confirm(d) {
     const r = await fetch(CONFIG.API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(d) });
     return r.json();
   }
 };
 const api = DEMO ? demoApi : realApi;
+
+/* Identificador deste aparelho/navegador (fica salvo só aqui) */
+const TOKEN = (() => {
+  const KEY = 'cha-bento-aparelho';
+  try { const t = localStorage.getItem(KEY); if (t) return t; } catch (e) {}
+  const t = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 12));
+  try { localStorage.setItem(KEY, t); } catch (e) {}
+  return t;
+})();
 
 /* ---------- Cabeçalho, local e contagem ---------- */
 $('#baby').textContent = 'do ' + CONFIG.BEBE;
@@ -377,13 +379,14 @@ function showError(title, text) { $('#e-title').textContent = title; $('#e-text'
 async function load(code) {
   lastCode = code; show('loading');
   try {
-    const g = await api.get(code);
-    if (!g || !g.ok) { showError('Convite não encontrado', 'Confira se o link está completo ou procure seu nome abaixo.'); $('#e-retry').textContent = 'Procurar pelo nome'; $('#e-retry').onclick = () => show('search'); return; }
+    const g = await api.get(code, TOKEN);
+    if (!g || !g.ok) { $('#rsvp [data-state="nolink"] h2').textContent = 'Convite não encontrado'; show('nolink'); return; }
     guest = g; route();
   } catch (e) { showError('Ops, sem conexão', 'Não conseguimos carregar seu convite. Verifique sua internet e tente de novo.'); $('#e-retry').textContent = 'Tentar de novo'; $('#e-retry').onclick = () => load(lastCode); }
 }
 function route() {
-  if (guest.confirmado === 'Sim') renderGift();
+  if (guest.bloqueado) { $('#k-title').textContent = `Convite de ${firstName(guest.nome)} já respondido`; show('locked'); }
+  else if (guest.confirmado === 'Sim') renderGift();
   else if (guest.confirmado === 'Não') renderDeclined();
   else renderForm();
 }
@@ -433,7 +436,7 @@ $('#f-rsvp').addEventListener('submit', async e => {
   if (!choice) { $('#f-err').textContent = 'Escolha "Sim, eu vou!" ou "Não vou poder" para continuar.'; $('#f-err').hidden = false; return; }
   const btn = $('#f-send'); btn.disabled = true; btn.textContent = 'Enviando...';
   try {
-    const r = await api.confirm({ codigo: guest.codigo, confirmado: choice, acompanhantes: choice === 'Sim' ? acomp : 0, mensagem: $('#f-msg').value.trim() });
+    const r = await api.confirm({ codigo: guest.codigo, aparelho: TOKEN, confirmado: choice, acompanhantes: choice === 'Sim' ? acomp : 0, mensagem: $('#f-msg').value.trim() });
     if (!r || !r.ok) throw new Error('falha');
     guest = r; route();
   } catch (err) {
@@ -442,33 +445,16 @@ $('#f-rsvp').addEventListener('submit', async e => {
   }
 });
 
-let sTimer = null;
-$('#s-name').addEventListener('input', e => {
-  clearTimeout(sTimer);
-  const v = e.target.value;
-  sTimer = setTimeout(async () => {
-    const box = $('#s-results'), hint = $('#s-hint');
-    box.innerHTML = ''; hint.hidden = true;
-    if (norm(v).length < 3) return;
-    try {
-      const r = await api.search(v);
-      const list = (r && r.resultados) || [];
-      if (!list.length) { hint.textContent = 'Não encontramos esse nome. Tente só o primeiro nome ou fale com os papais.'; hint.hidden = false; return; }
-      if (list.length > 1) { hint.textContent = 'Encontramos mais de uma pessoa. Toque no seu nome:'; hint.hidden = false; }
-      list.forEach(g => { const b = document.createElement('button'); b.type = 'button'; b.textContent = g.nome; b.onclick = () => load(g.codigo); box.appendChild(b); });
-    } catch (err) { hint.textContent = 'Sem conexão no momento. Tente de novo em instantes.'; hint.hidden = false; }
-  }, 350);
-});
-
 /* ---------- Início ---------- */
 const code = new URLSearchParams(location.search).get('c');
 if (DEMO) {
   $('#demo').hidden = false;
-  const opts = [['paulo7x', 'Paulo (ainda não respondeu)'], ['mari9q', 'Mariana (já confirmou)'], ['__busca', 'Sem link: busca por nome']];
+  demoDB.find(g => g.codigo === 'mari9q').aparelho = TOKEN; // na prévia, a Mariana confirmou neste aparelho
+  const opts = [['paulo7x', 'Paulo (ainda não respondeu)'], ['mari9q', 'Mariana (já confirmou)'], ['ana3k', 'Link encaminhado (outro aparelho)'], ['__sem', 'Sem link']];
   const chips = $('#demo-chips');
   opts.forEach(([c, label]) => {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.dataset.c = c;
-    b.onclick = () => { chips.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); if (c === '__busca') { $('#s-name').value = ''; $('#s-results').innerHTML = ''; $('#s-hint').hidden = true; show('search'); } else load(c); };
+    b.onclick = () => { chips.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); if (c === '__sem') { $('#rsvp [data-state="nolink"] h2').textContent = 'Este convite é pessoal'; show('nolink'); } else load(c); };
     chips.appendChild(b);
   });
   const first = chips.querySelector(`[data-c="${code || 'paulo7x'}"]`) || chips.firstChild;
@@ -477,7 +463,7 @@ if (DEMO) {
 } else if (code) {
   load(code);
 } else {
-  show('search');
+  show('nolink');
 }
 </script>
 </body>
